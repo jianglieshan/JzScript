@@ -3,21 +3,50 @@ package interpreter
 import (
 	"fmt"
 	"strconv"
+	"strings"
+	"unicode"
 )
 
 const (
 	INTEGER = "INTEGER"
-	PLUS    = "PLUS"
+	OP      = "OP"
 	EOF     = "EOF"
 )
 
+type Process func(int, int) int
+
+var plus = func(a int, b int) int {
+	return a + b
+}
+var sub = func(a int, b int) int {
+	return a - b
+}
+
+var mul = func(a int, b int) int {
+	return a * b
+}
+var dvd = func(a int, b int) int {
+	return a / b
+}
+
 type Token struct {
-	Type  string
-	Value string
+	Type    string
+	Value   string
+	process Process
 }
 
 func NewToken(t, v string) *Token {
-	return &Token{t, v}
+	var fn Process
+	if v == "+" {
+		fn = plus
+	} else if v == "-" {
+		fn = sub
+	} else if v == "*" {
+		fn = mul
+	} else if v == "/" {
+		fn = dvd
+	}
+	return &Token{t, v, fn}
 }
 
 type Interpreter struct {
@@ -35,12 +64,18 @@ func (i *Interpreter) GetNextToken() *Token {
 	pos := i.Pos
 	for pos < len(text) {
 		switch text[pos] {
-		case '+':
+		case '+', '-', '*', '/':
 			i.Pos = pos + 1
-			return NewToken(PLUS, "+")
+			return NewToken(OP, text[pos:pos+1])
 		case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
-			i.Pos = pos + 1
-			return NewToken(INTEGER, string(text[pos]))
+			end := pos + 1
+			for ; end < len(text); end++ {
+				if !unicode.IsDigit(int32(text[end])) {
+					break
+				}
+			}
+			i.Pos = end
+			return NewToken(INTEGER, text[pos:end])
 		default:
 			panic(fmt.Sprintf("Invalid character, '%c' at position %d", text[pos], pos))
 		}
@@ -56,11 +91,17 @@ func (i *Interpreter) Eat(tokenType string) bool {
 	return false
 }
 
+func (i *Interpreter) preCompile() {
+	i.Text = strings.ReplaceAll(i.Text, " ", "")
+}
+
 func (i *Interpreter) Expr() int {
+	i.preCompile()
 	i.CurrentToken = i.GetNextToken()
 	left := i.CurrentToken
 	i.Eat(INTEGER)
-	i.Eat(PLUS)
+	op := i.CurrentToken
+	i.Eat(OP)
 	right := i.CurrentToken
 	i.Eat(INTEGER)
 
@@ -69,5 +110,5 @@ func (i *Interpreter) Expr() int {
 	if err1 != nil || err2 != nil {
 		panic("Invalid integer")
 	}
-	return lv + rv
+	return op.process(lv, rv)
 }
