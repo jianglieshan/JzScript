@@ -3,7 +3,6 @@ package interpreter
 import (
 	"fmt"
 	"strconv"
-	"strings"
 	"unicode"
 )
 
@@ -31,11 +30,11 @@ var dvd = func(a int, b int) int {
 
 type Token struct {
 	Type    string
-	Value   string
+	Value   interface{}
 	process Process
 }
 
-func NewToken(t, v string) *Token {
+func NewToken(t string, v interface{}) *Token {
 	var fn Process
 	if v == "+" {
 		fn = plus
@@ -50,13 +49,15 @@ func NewToken(t, v string) *Token {
 }
 
 type Interpreter struct {
-	Text         string
-	Pos          int
-	CurrentToken *Token
+	Text              string
+	Pos               int
+	CurrentToken      *Token
+	IntegerTokenStack *Stack
+	OpTokenStack      *Stack
 }
 
 func NewInterpreter(text string) *Interpreter {
-	return &Interpreter{Text: text, Pos: 0, CurrentToken: nil}
+	return &Interpreter{Text: text, Pos: 0, CurrentToken: nil, IntegerTokenStack: new(Stack), OpTokenStack: new(Stack)}
 }
 
 func (i *Interpreter) GetNextToken() *Token {
@@ -75,7 +76,12 @@ func (i *Interpreter) GetNextToken() *Token {
 				}
 			}
 			i.Pos = end
-			return NewToken(INTEGER, text[pos:end])
+			num := text[pos:end]
+			atoi, _ := strconv.Atoi(num)
+			return NewToken(INTEGER, atoi)
+		case ' ':
+			pos = pos + 1
+			continue
 		default:
 			panic(fmt.Sprintf("Invalid character, '%c' at position %d", text[pos], pos))
 		}
@@ -91,24 +97,35 @@ func (i *Interpreter) Eat(tokenType string) bool {
 	return false
 }
 
-func (i *Interpreter) preCompile() {
-	i.Text = strings.ReplaceAll(i.Text, " ", "")
-}
-
 func (i *Interpreter) Expr() int {
-	i.preCompile()
-	i.CurrentToken = i.GetNextToken()
-	left := i.CurrentToken
-	i.Eat(INTEGER)
-	op := i.CurrentToken
-	i.Eat(OP)
-	right := i.CurrentToken
-	i.Eat(INTEGER)
 
-	lv, err1 := strconv.Atoi(left.Value)
-	rv, err2 := strconv.Atoi(right.Value)
-	if err1 != nil || err2 != nil {
-		panic("Invalid integer")
+	for i.CurrentToken = i.GetNextToken(); i.CurrentToken.Type != EOF; i.CurrentToken = i.GetNextToken() {
+		if i.CurrentToken.Type == INTEGER {
+			i.IntegerTokenStack.Push(i.CurrentToken)
+		} else if i.CurrentToken.Type == OP {
+			i.OpTokenStack.Push(i.CurrentToken)
+		}
+		if i.IntegerTokenStack.Size() == 2 {
+			s := i.IntegerTokenStack.Pop().(*Token)
+			f := i.IntegerTokenStack.Pop().(*Token)
+			op := i.OpTokenStack.Pop().(*Token)
+			i.IntegerTokenStack.Push(NewToken(INTEGER, op.process(f.Value.(int), s.Value.(int))))
+		}
+		fmt.Println(i.CurrentToken.Value)
 	}
-	return op.process(lv, rv)
+	return i.IntegerTokenStack.Pop().(*Token).Value.(int)
+	//i.CurrentToken = i.GetNextToken()
+	//left := i.CurrentToken
+	//i.Eat(INTEGER)
+	//op := i.CurrentToken
+	//i.Eat(OP)
+	//right := i.CurrentToken
+	//i.Eat(INTEGER)
+	//
+	//lv, err1 := strconv.Atoi(left.Value)
+	//rv, err2 := strconv.Atoi(right.Value)
+	//if err1 != nil || err2 != nil {
+	//	panic("Invalid integer")
+	//}
+	//return op.process(lv, rv)
 }
